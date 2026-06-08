@@ -1,0 +1,27 @@
+Package: pubthis
+Title: Quarto Publishing Workflow with Style
+Version: 0.0.1
+Authors@R:
+    person("Milan", "Wiedemann", email = "milan.wiedemann@gmail.com",
+           comment = c(ORCID = "0000-0003-1991-282X"),
+           role = c("aut", "cre"))
+Description: Render and publish Quarto manuscripts to Google Drive and
+    Microsoft OneDrive with consistent formatting applied across projects.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    cli,
+    fs,
+    here,
+    processx,
+    usethis,
+    yaml
+Suggests:
+    googledrive,
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
