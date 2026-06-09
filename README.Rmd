@@ -15,11 +15,15 @@ knitr::opts_chunk$set(
 
 # pubthis
 
-Render and publish Quarto manuscripts to Google Drive with consistent formatting.
-Fixes known issues with figures when converting Quarto files to Google Docs.
-Modelled on [usethis](https://usethis.r-lib.org/), `use_publish_workflow()` drops the required files into any project across projects.
+Render and publish Quarto manuscripts to Google Drive.
+Fixes figure formatting issues that occur when converting `.qmd` files to Google Docs.
+Keeps everyone working on the manuscrtip pointed to the same shared Google Doc.
 
-One suggested workflow: write in Quarto, publish to Google Drive, get comments from collaborators, update the `.qmd`, and repeat.
+**Suggested workflow**: write in Quarto, publish to Google Drive, get comments from collaborators, update the Quarto file, and repeat.
+Changes do not sync back from Google Docs to Quarto.
+The Quarto file remains the source of truth.
+This lets collaborators comment and suggest changes in Google Docs.
+The lead researcher then reviews the suggestions and manually transfers accepted changes back into the Quarto file.
 
 ## Installation
 
@@ -28,24 +32,28 @@ One suggested workflow: write in Quarto, publish to Google Drive, get comments f
 pak::pak("milanwiedemann/pubthis")
 ```
 
-## Usage
+To run the publishing workflow from the terminal you also need to install [just](https://github.com/casey/just) to run the just recipes.
 
-### Set up a new project
+## Getting started
 
-Run once to add the workflow to your project:
+### 1. Set up your project
+
+Run once per project to add the required files:
 
 ```{r, eval = FALSE}
 pubthis::use_publish_workflow()
 ```
 
-This copies into your project:
+This adds:
 
 - `publish/reference.docx`: Word template for consistent styles
-- `publish/docx-format.lua`: Lua filter for DOCX output needed for figures in Google Docs
+- `publish/docx-format.lua`: Lua filter that fixes figures in Google Docs
 - `justfile`: task runner with `publish`, `open`, and `auth-gdrive` commands
 
-Then add the following to your `.qmd` YAML.
-For example, if your manuscript is at `manuscripts/paper.qmd`, the path from there to `publish/` at the project root is `../publish/`:
+### 2. Configure your manuscript
+
+Add this to your `.qmd` YAML.
+If your manuscript is at `manuscripts/paper.qmd`, the path from there to `publish/` at the project root is `../publish/`:
 
 ````yaml
 format:
@@ -55,33 +63,55 @@ filters:
   - ../publish/docx-format.lua
 ````
 
-### Publish a manuscript
+### 3. Authenticate
 
-From the terminal using `just`:
+Run once in an interactive R session to cache your Google Drive credentials.
+From terminal using just (prints the commands to run):
 
 ```sh
-# Render and publish to Google Drive
-just publish manuscripts/paper.qmd
+just auth-gdrive
+```
 
-# Open the published doc in the browser
+Or from R console:
+
+```{r, eval = FALSE}
+googledrive::drive_auth()
+```
+
+### 4. Publish
+
+From terminal using just:
+
+```sh
+# Render and upload to Google Drive as Google Doc
+just publish manuscripts/paper.qmd
+# Open the published Google Doc in the browser
 just open manuscripts/paper.qmd
 ```
 
-Or directly from R:
+Or from R console:
 
 ```{r, eval = FALSE}
 pubthis::publish("manuscripts/paper.qmd")
 pubthis::open_published("manuscripts/paper.qmd")
 ```
 
-### Authentication
+## Tracking the Google Doc
 
-Run `just auth-gdrive` to see instructions for caching Google Drive credentials.
+pubthis uses a `_publish_ids.yml` file next to your `.qmd` to remember which Google Doc to update.
+Commit this file so everyone on the project opens the same doc.
+There are two ways to set this up:
 
-### How published IDs are tracked
+1. Let pubthis create a new doc: On first publish, a new Google Doc is created and `_publish_ids.yml` is written automatically. Every subsequent `publish` call updates that same doc in place.
+1. Use an existing doc: If a shared doc already exists, create `_publish_ids.yml` manually and paste in the doc ID (the long string between `/d/` and `/edit` in the doc URL)
 
-On first publish, a `_publish_ids.yml` file is created next to the `.qmd` file.
-Commit this file so collaborators always open the same shared document.
+```yaml
+gdrive:
+  paper.qmd:
+    id: <paste-google-doc-id-here>
+```
+
+Every subsequent `publish` call will update that doc in place.
 
 ## Related packages
 
