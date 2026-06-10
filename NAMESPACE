@@ -2,5 +2,4 @@
 
 export(open_published)
 export(publish)
-export(use_just_instructions)
 export(use_publish_workflow)

@@ -5,7 +5,7 @@
 
 Render and publish Quarto manuscripts to Google Drive. Fixes figure
 formatting issues that occur when converting `.qmd` files to Google
-Docs. Keeps everyone working on the manuscrtip pointed to the same
+Docs. Keeps everyone working on the manuscript pointed to the same
 shared Google Doc.
 
 **Suggested workflow**: write in Quarto, publish to Google Drive, get
@@ -43,21 +43,13 @@ This adds:
 - `justfile`: task runner with `publish`, `open`, and `auth-gdrive`
   commands
 
-### 2. Configure your manuscript
+`pubthis::publish()` applies the reference document and Lua filter
+automatically — no changes to your `.qmd` YAML are needed. If you also
+render with plain `quarto render` and want the same Word styles, set
+`reference-doc: ../publish/reference.docx` under `format: docx:` in your
+`.qmd` YAML (adjust the relative path to where your manuscript lives).
 
-Add this to your `.qmd` YAML. If your manuscript is at
-`manuscripts/paper.qmd`, the path from there to `publish/` at the
-project root is `../publish/`:
-
-``` yaml
-format:
-  docx:
-    reference-doc: ../publish/reference.docx
-filters:
-  - ../publish/docx-format.lua
-```
-
-### 3. Authenticate
+### 2. Authenticate
 
 Run once in an interactive R session to cache your Google Drive
 credentials. From terminal using just (prints the commands to run):
@@ -72,7 +64,7 @@ Or from R console:
 googledrive::drive_auth()
 ```
 
-### 4. Publish
+### 3. Publish
 
 From terminal using just:
 
