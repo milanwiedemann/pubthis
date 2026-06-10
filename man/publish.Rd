@@ -10,7 +10,7 @@ publish(qmd_file, no_render = FALSE, quarto_args = character())
 \item{qmd_file}{Path to the \code{.qmd} source file.}
 
 \item{no_render}{If \code{TRUE}, skip the render step and upload the existing
-DOCX.}
+DOCX next to the \code{.qmd}.}
 
 \item{quarto_args}{Character vector of extra arguments passed to
 \verb{quarto render}.}

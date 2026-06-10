@@ -10,6 +10,6 @@ open_published(qmd_file)
 \item{qmd_file}{Path to the \code{.qmd} source file.}
 }
 \description{
-Reads the URL from \verb{_publish_ids.yml} next to the \code{.qmd} file and opens it
-in the system browser.
+Reads the document ID from \verb{_publish_ids.yml} next to the \code{.qmd} file and
+opens the Google Doc in the system browser.
 }

@@ -7,101 +7,127 @@
 #'
 #' @param qmd_file Path to the `.qmd` source file.
 #' @param no_render If `TRUE`, skip the render step and upload the existing
-#'   DOCX.
+#'   DOCX next to the `.qmd`.
 #' @param quarto_args Character vector of extra arguments passed to
 #'   `quarto render`.
 #'
 #' @export
 publish <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
-  publish_gdrive(qmd_file, no_render = no_render, quarto_args = quarto_args)
+  qmd_file <- check_qmd_file(qmd_file)
+  base <- fs::path_file(qmd_file)
+  ids_file <- ids_file_for(qmd_file)
+
+  check_package("googledrive")
+  drive_login()
+
+  docx_file <- if (no_render) {
+    fs::path_ext_set(qmd_file, "docx")
+  } else {
+    render_docx(qmd_file, quarto_args = quarto_args)
+  }
+
+  all_ids <- load_ids(ids_file)
+  existing_id <- all_ids[["gdrive"]][[base]][["id"]]
+  doc_id <- upload_to_gdrive(docx_file, fs::path_ext_remove(base), existing_id)
+  all_ids[["gdrive"]][[base]] <- list(id = doc_id)
+  yaml::write_yaml(all_ids, ids_file)
+
+  cli::cli_alert_success("Published: {gdrive_url(doc_id)}")
+  if (is.null(existing_id)) {
+    cli::cli_alert_info("Commit {.file {ids_file}} so collaborators point at the same doc.")
+  }
+  invisible(doc_id)
 }
 
 #' Open a published manuscript in the browser
 #'
-#' Reads the URL from `_publish_ids.yml` next to the `.qmd` file and opens it
-#' in the system browser.
+#' Reads the document ID from `_publish_ids.yml` next to the `.qmd` file and
+#' opens the Google Doc in the system browser.
 #'
 #' @param qmd_file Path to the `.qmd` source file.
 #'
 #' @export
 open_published <- function(qmd_file) {
-  qmd_file <- fs::path_abs(qmd_file)
+  qmd_file <- check_qmd_file(qmd_file)
   base <- fs::path_file(qmd_file)
-  ids_file <- fs::path(fs::path_dir(qmd_file), "_publish_ids.yml")
-  url <- load_ids(ids_file)[["gdrive"]][[base]][["url"]]
-  if (is.null(url)) {
+  id <- load_ids(ids_file_for(qmd_file))[["gdrive"]][[base]][["id"]]
+  if (is.null(id)) {
     cli::cli_abort(c(
-      "No published URL found for {.file {base}}.",
+      "No published doc found for {.file {base}}.",
       "i" = "Run {.run pubthis::publish('{qmd_file}')} first."
     ))
   }
-  utils::browseURL(url)
+  browse_url(gdrive_url(id))
 }
 
-publish_gdrive <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
+check_qmd_file <- function(qmd_file) {
+  if (!is.character(qmd_file) || length(qmd_file) != 1 || is.na(qmd_file) || !nzchar(qmd_file)) {
+    cli::cli_abort("{.arg qmd_file} must be a single non-empty path to a {.code .qmd} file.")
+  }
   qmd_file <- fs::path_abs(qmd_file)
-  if (!fs::file_exists(qmd_file)) {
+  if (!fs::is_file(qmd_file)) {
     cli::cli_abort(c("File not found:", "x" = "{.file {qmd_file}}"))
   }
-
-  check_package("googledrive")
-  options(gargle_oauth_email = TRUE)
-  googledrive::drive_auth()
-  if (is.null(googledrive::drive_user())) {
-    cli::cli_abort(c(
-      "Not authenticated with Google Drive.",
-      "i" = "Run {.code just auth-gdrive} for instructions."
-    ), call = NULL)
+  ext <- fs::path_ext(qmd_file)
+  if (tolower(ext) != "qmd") {
+    cli::cli_abort("{.arg qmd_file} must be a {.code .qmd} file, not {.code .{ext}}.")
   }
-
-  run_publish(qmd_file, no_render = no_render, quarto_args = quarto_args)
+  qmd_file
 }
 
-# Shared pipeline: resolve paths, render, upload, track IDs, emit messages.
-run_publish <- function(qmd_file, no_render, quarto_args) {
-  base <- fs::path_file(qmd_file)
-  docx_file <- fs::path_ext_set(qmd_file, "docx")
-  doc_name <- fs::path_ext_remove(base)
-  ids_file <- fs::path(fs::path_dir(qmd_file), "_publish_ids.yml")
+ids_file_for <- function(qmd_file) {
+  fs::path(fs::path_dir(qmd_file), "_publish_ids.yml")
+}
 
-  if (!no_render) render_docx(qmd_file, quarto_args = quarto_args)
-
-  all_ids <- load_ids(ids_file)
-  is_new <- is.null(all_ids[["gdrive"]]) || !(base %in% names(all_ids[["gdrive"]]))
-
-  doc_id <- upload_to_gdrive(docx_file, doc_name, all_ids[["gdrive"]][[base]][["id"]])
-  all_ids[["gdrive"]][[base]] <- list(
-    id = doc_id,
-    url = gdrive_url(doc_id),
-    last_published = now_utc()
+drive_login <- function() {
+  tryCatch(
+    googledrive::drive_auth(email = TRUE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Google Drive authentication failed.",
+        "i" = "Run {.code googledrive::drive_auth()} once in an interactive R session to cache credentials."
+      ), parent = e, call = NULL)
+    }
   )
-  yaml::write_yaml(all_ids, ids_file)
-
-  cli::cli_alert_success("Published: {all_ids[['gdrive']][[base]][['url']]}")
-  if (is_new) cli::cli_alert_info("Commit {.file {ids_file}} so collaborators point at the same doc.")
 }
 
 render_docx <- function(qmd_file, quarto_args = character()) {
-  qmd_file <- fs::path_abs(qmd_file)
+  wd <- fs::path_dir(qmd_file)
   result <- processx::run(
     "quarto", c(
       "render", fs::path_file(qmd_file), "--to", "docx",
-      docx_publish_args(), quarto_args
+      docx_publish_args(qmd_file), quarto_args
     ),
-    wd = fs::path_dir(qmd_file),
+    wd = wd,
     stdout = "|", stderr = "|",
     error_on_status = FALSE
   )
   if (result$status != 0) {
-    cli::cli_abort(c("quarto render failed for {.file {qmd_file}}:", result$stderr))
+    render_error <- result$stderr
+    cli::cli_abort(c("quarto render failed for {.file {qmd_file}}:", "x" = "{render_error}"))
   }
-  invisible(result)
+  rendered_output(result, wd = wd, default = fs::path_ext_set(qmd_file, "docx"))
 }
 
-docx_publish_args <- function() {
-  reference_doc <- here::here("publish/reference.docx")
-  lua_filter <- here::here("publish/docx-format.lua")
-  missing <- c(reference_doc, lua_filter)[!fs::file_exists(c(reference_doc, lua_filter))]
+# Quarto controls where the DOCX lands (output-dir, output-file, project
+# type), so take the path from its "Output created:" message instead of
+# assuming it sits next to the .qmd.
+rendered_output <- function(result, wd, default) {
+  lines <- unlist(strsplit(c(result$stdout, result$stderr), "\n"))
+  created <- grep("^\\s*Output created: ", lines, value = TRUE)
+  if (length(created) == 0) {
+    return(default)
+  }
+  path <- trimws(sub("^\\s*Output created: ", "", created[[1]]))
+  fs::path_abs(path, start = wd)
+}
+
+docx_publish_args <- function(qmd_file) {
+  publish_dir <- find_publish_dir(fs::path_dir(qmd_file))
+  reference_doc <- fs::path(publish_dir, "reference.docx")
+  lua_filter <- fs::path(publish_dir, "docx-format.lua")
+  files <- c(reference_doc, lua_filter)
+  missing <- files[!fs::file_exists(files)]
   if (length(missing) > 0) {
     cli::cli_abort(c(
       "Missing DOCX publish support file(s).",
@@ -110,6 +136,26 @@ docx_publish_args <- function() {
     ))
   }
   c(paste0("--reference-doc=", reference_doc), paste0("--lua-filter=", lua_filter))
+}
+
+# Walk up from the .qmd towards the filesystem root looking for publish/,
+# so resolution depends only on the manuscript path, never on getwd().
+find_publish_dir <- function(start_dir) {
+  dir <- start_dir
+  repeat {
+    candidate <- fs::path(dir, "publish")
+    if (fs::dir_exists(candidate)) {
+      return(candidate)
+    }
+    parent <- fs::path_dir(dir)
+    if (parent == dir) {
+      cli::cli_abort(c(
+        "No {.file publish/} directory found in {.file {start_dir}} or any parent directory.",
+        "i" = "Run {.run pubthis::use_publish_workflow()} in your project to add it."
+      ))
+    }
+    dir <- parent
+  }
 }
 
 upload_to_gdrive <- function(docx_file, doc_name, existing_id = NULL) {
@@ -135,8 +181,8 @@ gdrive_url <- function(id) {
   paste0("https://docs.google.com/document/d/", id)
 }
 
-now_utc <- function() {
-  format(as.POSIXct(Sys.time(), tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ")
+browse_url <- function(url) {
+  utils::browseURL(url)
 }
 
 check_package <- function(pkg) {

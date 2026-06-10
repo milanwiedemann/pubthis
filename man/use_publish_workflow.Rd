@@ -13,5 +13,5 @@ prefer to call \code{pubthis::publish()} directly from R without using \code{jus
 \description{
 Copies \code{publish/reference.docx} and \code{publish/docx-format.lua} into the
 active project. Optionally also copies a \code{justfile} for terminal-based
-publishing and prints installation instructions for \code{just}.
+publishing.
 }

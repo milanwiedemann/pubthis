@@ -5,8 +5,8 @@ list:
     @just --list --unsorted
 
 # Render and publish a manuscript to Google Drive
-publish file *args:
-    Rscript -e "pubthis::publish('{{file}}')" {{args}}
+publish file:
+    Rscript -e "pubthis::publish('{{file}}')"
 
 # Open a published manuscript in the browser
 open file:
