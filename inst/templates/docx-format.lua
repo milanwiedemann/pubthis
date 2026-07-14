@@ -22,6 +22,36 @@
 -- to check for single-column tables instead.
 
 
+-- Pandoc's docx writer emits one "Author"-styled paragraph per author, so a
+-- multi-author manuscript gets a tall stack of names under the title. The
+-- reference doc can't fix this (styles can't merge paragraphs), so instead
+-- collapse the author list into a single comma-separated metadata entry,
+-- which the writer then renders as one Author paragraph.
+function Meta(meta)
+  if FORMAT ~= "docx" then return nil end
+  local authors = meta.author
+  if not authors or pandoc.utils.type(authors) ~= "List" or #authors < 2 then
+    return nil
+  end
+
+  local combined = pandoc.Inlines({})
+  for i, author in ipairs(authors) do
+    if i > 1 then
+      combined:insert(pandoc.Str(","))
+      combined:insert(pandoc.Space())
+    end
+    if pandoc.utils.type(author) == "Inlines" then
+      combined:extend(author --[[@as pandoc.Inlines]])
+    else
+      combined:insert(pandoc.Str(pandoc.utils.stringify(author)))
+    end
+  end
+
+  meta.author = pandoc.MetaInlines(combined)
+  return meta
+end
+
+
 function Header(el)
   if FORMAT == "docx" then
     el.identifier = ""
