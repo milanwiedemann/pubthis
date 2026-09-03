@@ -88,17 +88,18 @@ pubthis::open_published("manuscripts/paper.qmd")
 
 ## Tracking the Google Doc
 
-pubthis uses a `_publish_ids.yml` file next to your `.qmd` to remember which Google Doc to update.
+pubthis uses a `_publish.yml` file next to your `.qmd` to remember which Google Doc to update.
+This is the same publish-record file `quarto publish` itself uses, so a `gdrive` entry lives alongside any `posit-connect-cloud` (or other provider) entry for the same file without disturbing it.
 Commit this file so everyone on the project opens the same doc.
 There are two ways to set this up:
 
-1. Let pubthis create a new doc: On first publish, a new Google Doc is created and `_publish_ids.yml` is written automatically. Every subsequent `publish` call updates that same doc in place.
-1. Use an existing doc: If a shared doc already exists, create `_publish_ids.yml` manually and paste in the doc ID (the long string between `/d/` and `/edit` in the doc URL)
+1. Let pubthis create a new doc: On first publish, a new Google Doc is created and a `gdrive` entry is added to `_publish.yml` automatically. Every subsequent `publish` call updates that same doc in place.
+1. Use an existing doc: If a shared doc already exists, add an entry to `_publish.yml` manually and paste in the doc ID (the long string between `/d/` and `/edit` in the doc URL)
 
 ```yaml
-gdrive:
-  paper.qmd:
-    id: <paste-google-doc-id-here>
+- source: paper.qmd
+  gdrive:
+    - id: <paste-google-doc-id-here>
 ```
 
 Every subsequent `publish` call will update that doc in place.

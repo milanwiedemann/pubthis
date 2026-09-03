@@ -12,7 +12,12 @@ test_that("copied justfile is byte-identical to the template", {
   # ran pubthis::publish('') for every file.
   tmp <- local_test_project()
   use_publish_workflow()
-  template <- system.file("templates", "justfile", package = "pubthis", mustWork = TRUE)
+  template <- system.file(
+    "templates",
+    "justfile",
+    package = "pubthis",
+    mustWork = TRUE
+  )
   expect_equal(readLines(file.path(tmp, "justfile")), readLines(template))
 })
 

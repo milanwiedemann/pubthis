@@ -10,7 +10,10 @@ test_that("check_qmd_file rejects non-scalar and missing input", {
   expect_error(check_qmd_file(""), "must be a single non-empty")
   expect_error(check_qmd_file(NULL), "must be a single non-empty")
   expect_error(check_qmd_file(NA_character_), "must be a single non-empty")
-  expect_error(check_qmd_file(c("a.qmd", "b.qmd")), "must be a single non-empty")
+  expect_error(
+    check_qmd_file(c("a.qmd", "b.qmd")),
+    "must be a single non-empty"
+  )
   expect_error(check_qmd_file(tempfile(fileext = ".qmd")), "File not found")
 })
 
@@ -36,54 +39,116 @@ test_that("check_qmd_file returns the absolute path for a valid qmd", {
   expect_equal(fs::path_file(result), "paper.qmd")
 })
 
-# --- publish ids ------------------------------------------------------------
+# --- publish deployments -----------------------------------------------------
 
-test_that("load_ids returns empty list when file does not exist", {
-  expect_equal(load_ids(tempfile()), list())
+test_that("load_deployments returns empty list when file does not exist", {
+  expect_equal(load_deployments(tempfile()), list())
 })
 
-test_that("load_ids returns empty list for empty yaml", {
+test_that("load_deployments returns empty list for empty yaml", {
   f <- withr::local_tempfile(fileext = ".yml")
   writeLines("", f)
-  expect_equal(load_ids(f), list())
+  expect_equal(load_deployments(f), list())
 })
 
-test_that("load_ids round-trips yaml", {
+test_that("load_deployments round-trips yaml", {
   f <- withr::local_tempfile(fileext = ".yml")
-  ids <- list(gdrive = list("paper.qmd" = list(id = "abc123")))
-  yaml::write_yaml(ids, f)
-  expect_equal(load_ids(f), ids)
+  deployments <- list(list(
+    source = "paper.qmd",
+    gdrive = list(list(id = "abc123"))
+  ))
+  yaml::write_yaml(deployments, f)
+  expect_equal(load_deployments(f), deployments)
+})
+
+test_that("load_deployments errors on the old flat _publish_ids.yml shape", {
+  f <- withr::local_tempfile(fileext = ".yml")
+  yaml::write_yaml(list(gdrive = list("paper.qmd" = list(id = "abc123"))), f)
+  expect_error(load_deployments(f), "not in the expected format")
+})
+
+test_that("set_gdrive_deployment preserves other providers on the same source", {
+  deployments <- list(list(
+    source = "paper.qmd",
+    `posit-connect-cloud` = list(list(
+      id = "xyz",
+      url = "https://connect.example/xyz"
+    ))
+  ))
+  updated <- set_gdrive_deployment(deployments, "paper.qmd", "abc123")
+  expect_equal(updated[[1]][["posit-connect-cloud"]][[1]][["id"]], "xyz")
+  expect_equal(updated[[1]][["gdrive"]][[1]][["id"]], "abc123")
+})
+
+test_that("set_gdrive_deployment appends a new source entry when none exists", {
+  deployments <- list(list(
+    source = "other.qmd",
+    gdrive = list(list(id = "old"))
+  ))
+  updated <- set_gdrive_deployment(deployments, "paper.qmd", "abc123")
+  expect_length(updated, 2)
+  expect_equal(gdrive_entry(updated, "paper.qmd")[["id"]], "abc123")
+  expect_equal(gdrive_entry(updated, "other.qmd")[["id"]], "old")
 })
 
 test_that("gdrive_url builds correct URL", {
-  expect_equal(gdrive_url("abc123"), "https://docs.google.com/document/d/abc123")
+  expect_equal(
+    gdrive_url("abc123"),
+    "https://docs.google.com/document/d/abc123"
+  )
 })
 
 # --- open_published ---------------------------------------------------------
 
-test_that("open_published errors when no ids file exists", {
+test_that("open_published errors when no publish file exists", {
   tmp <- withr::local_tempdir()
   file.create(file.path(tmp, "paper.qmd"))
-  expect_error(open_published(file.path(tmp, "paper.qmd")), "No published doc found")
+  expect_error(
+    open_published(file.path(tmp, "paper.qmd")),
+    "No published doc found"
+  )
 })
 
 test_that("open_published errors when gdrive entry is missing", {
   tmp <- withr::local_tempdir()
   file.create(file.path(tmp, "paper.qmd"))
   yaml::write_yaml(
-    list(gdrive = list("other.qmd" = list(id = "abc123"))),
-    file.path(tmp, "_publish_ids.yml")
+    list(list(source = "other.qmd", gdrive = list(list(id = "abc123")))),
+    file.path(tmp, "_publish.yml")
   )
-  expect_error(open_published(file.path(tmp, "paper.qmd")), "No published doc found")
+  expect_error(
+    open_published(file.path(tmp, "paper.qmd")),
+    "No published doc found"
+  )
 })
 
 test_that("open_published derives the URL from a hand-created id-only yml", {
-  # The README documents creating _publish_ids.yml with only an id key.
+  # The README documents creating _publish.yml with only an id key.
   tmp <- withr::local_tempdir()
   file.create(file.path(tmp, "paper.qmd"))
   yaml::write_yaml(
-    list(gdrive = list("paper.qmd" = list(id = "abc123"))),
-    file.path(tmp, "_publish_ids.yml")
+    list(list(source = "paper.qmd", gdrive = list(list(id = "abc123")))),
+    file.path(tmp, "_publish.yml")
+  )
+  opened <- NULL
+  local_mocked_bindings(browse_url = function(url) opened <<- url)
+  open_published(file.path(tmp, "paper.qmd"))
+  expect_equal(opened, "https://docs.google.com/document/d/abc123")
+})
+
+test_that("open_published works alongside an existing posit-connect-cloud entry", {
+  tmp <- withr::local_tempdir()
+  file.create(file.path(tmp, "paper.qmd"))
+  yaml::write_yaml(
+    list(list(
+      source = "paper.qmd",
+      `posit-connect-cloud` = list(list(
+        id = "xyz",
+        url = "https://connect.example/xyz"
+      )),
+      gdrive = list(list(id = "abc123"))
+    )),
+    file.path(tmp, "_publish.yml")
   )
   opened <- NULL
   local_mocked_bindings(browse_url = function(url) opened <<- url)
@@ -103,12 +168,18 @@ test_that("find_publish_dir walks up from a manuscripts/ subdirectory", {
   tmp <- withr::local_tempdir()
   fs::dir_create(fs::path(tmp, "publish"))
   fs::dir_create(fs::path(tmp, "manuscripts"))
-  expect_equal(find_publish_dir(fs::path(tmp, "manuscripts")), fs::path(tmp, "publish"))
+  expect_equal(
+    find_publish_dir(fs::path(tmp, "manuscripts")),
+    fs::path(tmp, "publish")
+  )
 })
 
 test_that("find_publish_dir errors when no publish/ exists in any parent", {
   tmp <- withr::local_tempdir()
-  expect_error(find_publish_dir(fs::path(tmp)), "No .*publish.* directory found")
+  expect_error(
+    find_publish_dir(fs::path(tmp)),
+    "No .*publish.* directory found"
+  )
 })
 
 test_that("docx_publish_args errors when support files are missing", {
@@ -128,18 +199,28 @@ test_that("docx_publish_args resolves files relative to the qmd, not getwd()", {
   file.create(fs::path(tmp, "publish", "docx-format.lua"))
   withr::local_dir(withr::local_tempdir())
   args <- docx_publish_args(fs::path(tmp, "manuscripts", "paper.qmd"))
-  expect_equal(args, c(
-    paste0("--reference-doc=", fs::path(tmp, "publish", "reference.docx")),
-    paste0("--lua-filter=", fs::path(tmp, "publish", "docx-format.lua"))
-  ))
+  expect_equal(
+    args,
+    c(
+      paste0("--reference-doc=", fs::path(tmp, "publish", "reference.docx")),
+      paste0("--lua-filter=", fs::path(tmp, "publish", "docx-format.lua"))
+    )
+  )
 })
 
 # --- render output location -------------------------------------------------
 
 test_that("rendered_output takes the path from quarto's Output created line", {
-  result <- list(stdout = "", stderr = "pandoc ...\nOutput created: _output/paper.docx\n")
+  result <- list(
+    stdout = "",
+    stderr = "pandoc ...\nOutput created: _output/paper.docx\n"
+  )
   expect_equal(
-    rendered_output(result, wd = "/proj/manuscripts", default = "/proj/manuscripts/paper.docx"),
+    rendered_output(
+      result,
+      wd = "/proj/manuscripts",
+      default = "/proj/manuscripts/paper.docx"
+    ),
     fs::path("/proj/manuscripts/_output/paper.docx")
   )
 })
@@ -164,5 +245,8 @@ test_that("upload_to_gdrive errors clearly when the DOCX is missing", {
 # --- misc -------------------------------------------------------------------
 
 test_that("check_package errors when package is not installed", {
-  expect_error(check_package("_not_a_real_package_"), "is required but not installed")
+  expect_error(
+    check_package("_not_a_real_package_"),
+    "is required but not installed"
+  )
 })

@@ -9,8 +9,14 @@
 #'
 #' @export
 use_publish_workflow <- function(justfile = TRUE) {
-  copy_template("docx-format.lua", save_as = fs::path("publish", "docx-format.lua"))
-  copy_template("reference.docx", save_as = fs::path("publish", "reference.docx"))
+  copy_template(
+    "docx-format.lua",
+    save_as = fs::path("publish", "docx-format.lua")
+  )
+  copy_template(
+    "reference.docx",
+    save_as = fs::path("publish", "reference.docx")
+  )
   if (justfile) {
     # Verbatim copy: usethis::use_template() would whisker-render the file
     # and strip just's own {{file}}/{{args}} placeholders.
@@ -23,11 +29,18 @@ use_publish_workflow <- function(justfile = TRUE) {
 }
 
 copy_template <- function(template, save_as) {
-  src <- system.file("templates", template, package = "pubthis", mustWork = TRUE)
+  src <- system.file(
+    "templates",
+    template,
+    package = "pubthis",
+    mustWork = TRUE
+  )
   dest <- fs::path(usethis::proj_get(), save_as)
   if (fs::file_exists(dest)) {
     if (same_contents(src, dest)) {
-      cli::cli_inform(c("i" = "{.file {save_as}} already exists and matches the current template, skipping."))
+      cli::cli_inform(c(
+        "i" = "{.file {save_as}} already exists and matches the current template, skipping."
+      ))
     } else {
       cli::cli_inform(c(
         "!" = "{.file {save_as}} already exists but differs from the current template.",
