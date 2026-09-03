@@ -1,8 +1,10 @@
 #' Render and publish a Quarto manuscript to Google Drive
 #'
 #' Renders a `.qmd` file to DOCX using the bundled reference document and Lua
-#' filter, then uploads it to Google Drive. On first publish a
-#' `_publish_ids.yml` file is created next to the `.qmd` — commit this so
+#' filter, then uploads it to Google Drive. On first publish, a `gdrive` entry
+#' for the file is added to `_publish.yml` next to the `.qmd` — the same
+#' publish-record file `quarto publish` uses, so a doc already deployed to
+#' e.g. Posit Connect keeps that record side by side. Commit this file so
 #' collaborators always open the same shared document.
 #'
 #' @param qmd_file Path to the `.qmd` source file.
@@ -15,7 +17,7 @@
 publish <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
   qmd_file <- check_qmd_file(qmd_file)
   base <- fs::path_file(qmd_file)
-  ids_file <- ids_file_for(qmd_file)
+  deployments_file <- deployments_file_for(qmd_file)
 
   check_package("googledrive")
   drive_login()
@@ -26,23 +28,25 @@ publish <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
     render_docx(qmd_file, quarto_args = quarto_args)
   }
 
-  all_ids <- load_ids(ids_file)
-  existing_id <- all_ids[["gdrive"]][[base]][["id"]]
+  deployments <- load_deployments(deployments_file)
+  existing_id <- gdrive_entry(deployments, base)[["id"]]
   doc_id <- upload_to_gdrive(docx_file, fs::path_ext_remove(base), existing_id)
-  all_ids[["gdrive"]][[base]] <- list(id = doc_id)
-  yaml::write_yaml(all_ids, ids_file)
+  deployments <- set_gdrive_deployment(deployments, base, doc_id)
+  yaml::write_yaml(deployments, deployments_file)
 
   cli::cli_alert_success("Published: {gdrive_url(doc_id)}")
   if (is.null(existing_id)) {
-    cli::cli_alert_info("Commit {.file {ids_file}} so collaborators point at the same doc.")
+    cli::cli_alert_info(
+      "Commit {.file {deployments_file}} so collaborators point at the same doc."
+    )
   }
   invisible(doc_id)
 }
 
 #' Open a published manuscript in the browser
 #'
-#' Reads the document ID from `_publish_ids.yml` next to the `.qmd` file and
-#' opens the Google Doc in the system browser.
+#' Reads the document ID from the `gdrive` entry in `_publish.yml` next to the
+#' `.qmd` file and opens the Google Doc in the system browser.
 #'
 #' @param qmd_file Path to the `.qmd` source file.
 #'
@@ -50,7 +54,8 @@ publish <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
 open_published <- function(qmd_file) {
   qmd_file <- check_qmd_file(qmd_file)
   base <- fs::path_file(qmd_file)
-  id <- load_ids(ids_file_for(qmd_file))[["gdrive"]][[base]][["id"]]
+  deployments <- load_deployments(deployments_file_for(qmd_file))
+  id <- gdrive_entry(deployments, base)[["id"]]
   if (is.null(id)) {
     cli::cli_abort(c(
       "No published doc found for {.file {base}}.",
@@ -61,8 +66,15 @@ open_published <- function(qmd_file) {
 }
 
 check_qmd_file <- function(qmd_file) {
-  if (!is.character(qmd_file) || length(qmd_file) != 1 || is.na(qmd_file) || !nzchar(qmd_file)) {
-    cli::cli_abort("{.arg qmd_file} must be a single non-empty path to a {.code .qmd} file.")
+  if (
+    !is.character(qmd_file) ||
+      length(qmd_file) != 1 ||
+      is.na(qmd_file) ||
+      !nzchar(qmd_file)
+  ) {
+    cli::cli_abort(
+      "{.arg qmd_file} must be a single non-empty path to a {.code .qmd} file."
+    )
   }
   qmd_file <- fs::path_abs(qmd_file)
   if (!fs::is_file(qmd_file)) {
@@ -70,23 +82,29 @@ check_qmd_file <- function(qmd_file) {
   }
   ext <- fs::path_ext(qmd_file)
   if (tolower(ext) != "qmd") {
-    cli::cli_abort("{.arg qmd_file} must be a {.code .qmd} file, not {.code .{ext}}.")
+    cli::cli_abort(
+      "{.arg qmd_file} must be a {.code .qmd} file, not {.code .{ext}}."
+    )
   }
   qmd_file
 }
 
-ids_file_for <- function(qmd_file) {
-  fs::path(fs::path_dir(qmd_file), "_publish_ids.yml")
+deployments_file_for <- function(qmd_file) {
+  fs::path(fs::path_dir(qmd_file), "_publish.yml")
 }
 
 drive_login <- function() {
   tryCatch(
     googledrive::drive_auth(email = TRUE),
     error = function(e) {
-      cli::cli_abort(c(
-        "Google Drive authentication failed.",
-        "i" = "Run {.code googledrive::drive_auth()} once in an interactive R session to cache credentials."
-      ), parent = e, call = NULL)
+      cli::cli_abort(
+        c(
+          "Google Drive authentication failed.",
+          "i" = "Run {.code googledrive::drive_auth()} once in an interactive R session to cache credentials."
+        ),
+        parent = e,
+        call = NULL
+      )
     }
   )
 }
@@ -94,17 +112,26 @@ drive_login <- function() {
 render_docx <- function(qmd_file, quarto_args = character()) {
   wd <- fs::path_dir(qmd_file)
   result <- processx::run(
-    "quarto", c(
-      "render", fs::path_file(qmd_file), "--to", "docx",
-      docx_publish_args(qmd_file), quarto_args
+    "quarto",
+    c(
+      "render",
+      fs::path_file(qmd_file),
+      "--to",
+      "docx",
+      docx_publish_args(qmd_file),
+      quarto_args
     ),
     wd = wd,
-    stdout = "|", stderr = "|",
+    stdout = "|",
+    stderr = "|",
     error_on_status = FALSE
   )
   if (result$status != 0) {
     render_error <- result$stderr
-    cli::cli_abort(c("quarto render failed for {.file {qmd_file}}:", "x" = "{render_error}"))
+    cli::cli_abort(c(
+      "quarto render failed for {.file {qmd_file}}:",
+      "x" = "{render_error}"
+    ))
   }
   rendered_output(result, wd = wd, default = fs::path_ext_set(qmd_file, "docx"))
 }
@@ -135,7 +162,10 @@ docx_publish_args <- function(qmd_file) {
       "i" = "Run {.run pubthis::use_publish_workflow()} to add them."
     ))
   }
-  c(paste0("--reference-doc=", reference_doc), paste0("--lua-filter=", lua_filter))
+  c(
+    paste0("--reference-doc=", reference_doc),
+    paste0("--lua-filter=", lua_filter)
+  )
 }
 
 # Walk up from the .qmd towards the filesystem root looking for publish/,
@@ -163,18 +193,81 @@ upload_to_gdrive <- function(docx_file, doc_name, existing_id = NULL) {
     cli::cli_abort(c("Rendered DOCX not found:", "x" = "{.file {docx_file}}"))
   }
   if (!is.null(existing_id)) {
-    googledrive::drive_update(googledrive::as_id(existing_id), media = docx_file)
+    googledrive::drive_update(
+      googledrive::as_id(existing_id),
+      media = docx_file
+    )
     existing_id
   } else {
-    result <- googledrive::drive_upload(docx_file, name = doc_name, type = "document")
+    result <- googledrive::drive_upload(
+      docx_file,
+      name = doc_name,
+      type = "document"
+    )
     as.character(result$id)
   }
 }
 
-load_ids <- function(ids_file) {
-  if (!fs::file_exists(ids_file)) return(list())
-  ids <- yaml::read_yaml(ids_file)
-  if (is.null(ids)) list() else ids
+
+# _publish.yml (Quarto's own publish-record file) is a top-level list of
+# entries like `- source: file.qmd` with a list of records under each
+# provider key (e.g. `posit-connect-cloud`, `gdrive`). `quarto publish` only
+# ever reads/replaces the provider key it's deploying to, so a `gdrive` entry
+# added here survives future `quarto publish` runs untouched.
+load_deployments <- function(deployments_file) {
+  if (!fs::file_exists(deployments_file)) {
+    return(list())
+  }
+  deployments <- yaml::read_yaml(deployments_file)
+  if (is.null(deployments)) {
+    return(list())
+  }
+  if (!is_deployments_list(deployments)) {
+    cli::cli_abort(c(
+      "{.file {deployments_file}} is not in the expected format.",
+      "i" = "It should be a list of entries like {.code - source: file.qmd}."
+    ))
+  }
+  deployments
+}
+
+is_deployments_list <- function(x) {
+  is.list(x) && (length(x) == 0 || is.null(names(x)))
+}
+
+find_source_idx <- function(deployments, base) {
+  idx <- which(vapply(
+    deployments,
+    function(d) identical(d[["source"]], base),
+    logical(1)
+  ))
+  if (length(idx) == 0) NA_integer_ else idx[[1]]
+}
+
+gdrive_entry <- function(deployments, base) {
+  idx <- find_source_idx(deployments, base)
+  if (is.na(idx)) {
+    return(NULL)
+  }
+  gdrive <- deployments[[idx]][["gdrive"]]
+  if (is.null(gdrive) || length(gdrive) == 0) {
+    return(NULL)
+  }
+  gdrive[[1]]
+}
+
+set_gdrive_deployment <- function(deployments, base, doc_id) {
+  record <- list(id = doc_id, url = gdrive_url(doc_id))
+  idx <- find_source_idx(deployments, base)
+  if (is.na(idx)) {
+    deployments[[length(deployments) + 1]] <- list(
+      source = base,
+      gdrive = list(record)
+    )
+  } else {
+    deployments[[idx]][["gdrive"]] <- list(record)
+  }
+  deployments
 }
 
 gdrive_url <- function(id) {
