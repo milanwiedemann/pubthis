@@ -1,18 +1,18 @@
 alias help := list
 
-# List available commands
+# List commands
 list:
     @just --list --unsorted
 
-# Render and publish a manuscript to Google Drive
+# Publish a manuscript
 publish file:
     Rscript -e "pubthis::publish('{{file}}')"
 
-# Open a published manuscript in the browser
+# Open a published manuscript
 open file:
     Rscript -e "pubthis::open_published('{{file}}')"
 
-# Show instructions for Google Drive authentication
+# Show Google Drive login steps
 auth-gdrive:
     @echo "Run this once in an interactive R session (e.g. Positron/RStudio) to cache credentials:"
     @echo "googledrive::drive_auth()"

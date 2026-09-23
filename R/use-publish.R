@@ -2,13 +2,13 @@
 #'
 #' Copies `publish/reference.docx` and `publish/docx-format.lua` into the
 #' active project. Optionally also copies a `justfile` for terminal-based
-#' publishing.
+#' publishing. Existing files are checked but never replaced.
 #'
-#' @param justfile Copy the `justfile` into the project? Set to `FALSE` if you
-#'   prefer to call `pubthis::publish()` directly from R without using `just`.
+#' @param justfile Copy the `justfile` into the project? The default is
+#'   `FALSE`.
 #'
 #' @export
-use_publish_workflow <- function(justfile = TRUE) {
+use_publish_workflow <- function(justfile = FALSE) {
   copy_template(
     "docx-format.lua",
     save_as = fs::path("publish", "docx-format.lua")
@@ -17,10 +17,11 @@ use_publish_workflow <- function(justfile = TRUE) {
     "reference.docx",
     save_as = fs::path("publish", "reference.docx")
   )
-  if (justfile) {
-    # Verbatim copy: usethis::use_template() would whisker-render the file
-    # and strip just's own {{file}}/{{args}} placeholders.
+  has_justfile <- fs::file_exists(fs::path(usethis::proj_get(), "justfile"))
+  if (justfile || has_justfile) {
     copy_template("justfile", save_as = "justfile")
+  }
+  if (justfile) {
     cli::cli_inform(c(
       "i" = "The {.file justfile} needs {.href [just](https://github.com/casey/just)} (e.g. {.code brew install just}).",
       "i" = "Run {.code just} in your terminal to see available commands."

@@ -22,9 +22,6 @@ manually transfers accepted changes back into the Quarto file.
 pak::pak("milanwiedemann/pubthis")
 ```
 
-To run the publishing workflow from the terminal you also need to
-install [just](https://github.com/casey/just) to run the just recipes.
-
 ## Getting started
 
 ### 1. Set up your project
@@ -40,8 +37,18 @@ This adds:
 - `publish/reference.docx`: Word template for consistent styles
 - `publish/docx-format.lua`: Lua filter that fixes figures in Google
   Docs
-- `justfile`: task runner with `publish`, `open`, and `auth-gdrive`
-  commands
+
+To also add a `justfile` with terminal commands, run:
+
+``` r
+pubthis::use_publish_workflow(justfile = TRUE)
+```
+
+This option requires [just](https://github.com/casey/just).
+
+Run `use_publish_workflow()` again after updating pubthis to check the
+copied files. It reports changed templates but does not replace existing
+files. An existing `justfile` is also checked.
 
 `pubthis::publish()` applies the reference document and Lua filter
 automatically — no changes to your `.qmd` YAML are needed. If you also
@@ -52,34 +59,33 @@ render with plain `quarto render` and want the same Word styles, set
 ### 2. Authenticate
 
 Run once in an interactive R session to cache your Google Drive
-credentials. From terminal using just (prints the commands to run):
-
-``` sh
-just auth-gdrive
-```
-
-Or from R console:
+credentials:
 
 ``` r
 googledrive::drive_auth()
 ```
 
-### 3. Publish
-
-From terminal using just:
+If you added the optional `justfile`, you can print these instructions
+from the terminal:
 
 ``` sh
-# Render and upload to Google Drive as Google Doc
-just publish manuscripts/paper.qmd
-# Open the published Google Doc in the browser
-just open manuscripts/paper.qmd
+just auth-gdrive
 ```
 
-Or from R console:
+### 3. Publish
+
+From R:
 
 ``` r
 pubthis::publish("manuscripts/paper.qmd")
 pubthis::open_published("manuscripts/paper.qmd")
+```
+
+If you added the optional `justfile`, you can use the terminal:
+
+``` sh
+just publish manuscripts/paper.qmd
+just open manuscripts/paper.qmd
 ```
 
 ## Tracking the Google Doc
@@ -88,8 +94,8 @@ pubthis uses a `_publish.yml` file next to your `.qmd` to remember which
 Google Doc to update. This is the same publish-record file
 `quarto publish` itself uses, so a `gdrive` entry lives alongside any
 `posit-connect-cloud` (or other provider) entry for the same file
-without disturbing it. Commit this file so everyone on the project
-opens the same doc. There are two ways to set this up:
+without disturbing it. Commit this file so everyone on the project opens
+the same doc. There are two ways to set this up:
 
 1.  Let pubthis create a new doc: On first publish, a new Google Doc is
     created and a `gdrive` entry is added to `_publish.yml`

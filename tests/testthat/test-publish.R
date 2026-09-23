@@ -1,8 +1,4 @@
-# --- input validation -------------------------------------------------------
-
 test_that("publish rejects an empty path before touching anything", {
-  # Regression: a broken justfile once ran pubthis::publish('') and the error
-  # surfaced deep in the upload step as "Rendered DOCX not found".
   expect_error(publish(""), "must be a single non-empty")
 })
 
@@ -18,7 +14,6 @@ test_that("check_qmd_file rejects non-scalar and missing input", {
 })
 
 test_that("check_qmd_file rejects directories", {
-  # fs::file_exists() is TRUE for directories, which let publish('') through.
   tmp <- withr::local_tempdir()
   expect_error(check_qmd_file(tmp), "File not found")
 })
@@ -38,8 +33,6 @@ test_that("check_qmd_file returns the absolute path for a valid qmd", {
   expect_true(fs::is_absolute_path(result))
   expect_equal(fs::path_file(result), "paper.qmd")
 })
-
-# --- publish deployments -----------------------------------------------------
 
 test_that("load_deployments returns empty list when file does not exist", {
   expect_equal(load_deployments(tempfile()), list())
@@ -98,8 +91,6 @@ test_that("gdrive_url builds correct URL", {
   )
 })
 
-# --- open_published ---------------------------------------------------------
-
 test_that("open_published errors when no publish file exists", {
   tmp <- withr::local_tempdir()
   file.create(file.path(tmp, "paper.qmd"))
@@ -123,7 +114,6 @@ test_that("open_published errors when gdrive entry is missing", {
 })
 
 test_that("open_published derives the URL from a hand-created id-only yml", {
-  # The README documents creating _publish.yml with only an id key.
   tmp <- withr::local_tempdir()
   file.create(file.path(tmp, "paper.qmd"))
   yaml::write_yaml(
@@ -155,8 +145,6 @@ test_that("open_published works alongside an existing posit-connect-cloud entry"
   open_published(file.path(tmp, "paper.qmd"))
   expect_equal(opened, "https://docs.google.com/document/d/abc123")
 })
-
-# --- publish support files --------------------------------------------------
 
 test_that("find_publish_dir finds publish/ next to the qmd", {
   tmp <- withr::local_tempdir()
@@ -208,8 +196,6 @@ test_that("docx_publish_args resolves files relative to the qmd, not getwd()", {
   )
 })
 
-# --- render output location -------------------------------------------------
-
 test_that("rendered_output takes the path from quarto's Output created line", {
   result <- list(
     stdout = "",
@@ -233,7 +219,62 @@ test_that("rendered_output falls back to the sibling path", {
   )
 })
 
-# --- upload guard -----------------------------------------------------------
+test_that("figure bookmarks start at the caption", {
+  skip_on_cran()
+  skip_if(Sys.which("quarto") == "", "Quarto is not installed")
+  skip_if_not_installed("knitr")
+
+  tmp <- withr::local_tempdir()
+  publish_dir <- fs::path(tmp, "publish")
+  fs::dir_create(publish_dir)
+  fs::file_copy(
+    system.file(
+      "templates",
+      c("reference.docx", "docx-format.lua"),
+      package = "pubthis"
+    ),
+    publish_dir
+  )
+
+  qmd <- fs::path(tmp, "paper.qmd")
+  writeLines(
+    c(
+      "---",
+      "format: docx",
+      "---",
+      "",
+      "See @fig-test.",
+      "",
+      "```{r}",
+      "#| label: fig-test",
+      '#| fig-cap: "Caption bookmark target."',
+      "#| echo: false",
+      "",
+      "plot(1)",
+      "```"
+    ),
+    qmd
+  )
+
+  docx <- render_docx(qmd)
+  xml <- paste(
+    readLines(unz(docx, "word/document.xml"), warn = FALSE),
+    collapse = ""
+  )
+  image <- regexpr("<w:drawing>", xml, fixed = TRUE)[[1]]
+  bookmark <- regexpr('w:name="fig-test"', xml, fixed = TRUE)[[1]]
+  caption <- regexpr("Caption bookmark target.", xml, fixed = TRUE)[[1]]
+  bookmark_end <- regexpr(
+    "<w:bookmarkEnd",
+    substring(xml, bookmark),
+    fixed = TRUE
+  )[[1]]
+
+  expect_gt(image, 0)
+  expect_gt(bookmark, image)
+  expect_gt(caption, bookmark)
+  expect_gt(bookmark_end, caption - bookmark)
+})
 
 test_that("upload_to_gdrive errors clearly when the DOCX is missing", {
   expect_error(
@@ -242,7 +283,26 @@ test_that("upload_to_gdrive errors clearly when the DOCX is missing", {
   )
 })
 
-# --- misc -------------------------------------------------------------------
+test_that("confirm_unresolved_comments stays quiet when there are none", {
+  local_mocked_bindings(count_unresolved_comments = function(doc_id) 0)
+  expect_no_message(confirm_unresolved_comments("abc123"))
+})
+
+test_that("confirm_unresolved_comments warns with the count", {
+  local_mocked_bindings(count_unresolved_comments = function(doc_id) 2)
+  expect_message(confirm_unresolved_comments("abc123"), "2 unresolved comments")
+})
+
+test_that("confirm_unresolved_comments reports a failed lookup instead of staying silent", {
+  local_mocked_bindings(count_unresolved_comments = function(doc_id) {
+    cli::cli_abort("boom")
+  })
+  expect_no_error(confirm_unresolved_comments("abc123"))
+  expect_message(
+    confirm_unresolved_comments("abc123"),
+    "Could not check for unresolved comments"
+  )
+})
 
 test_that("check_package errors when package is not installed", {
   expect_error(

@@ -2,9 +2,9 @@
 #'
 #' Renders a `.qmd` file to DOCX using the bundled reference document and Lua
 #' filter, then uploads it to Google Drive. On first publish, a `gdrive` entry
-#' for the file is added to `_publish.yml` next to the `.qmd` — the same
-#' publish-record file `quarto publish` uses, so a doc already deployed to
-#' e.g. Posit Connect keeps that record side by side. Commit this file so
+#' for the file is added to `_publish.yml` next to the `.qmd`. This is the
+#' same publish-record file `quarto publish` uses, so a doc already deployed
+#' to e.g. Posit Connect keeps that record side by side. Commit this file so
 #' collaborators always open the same shared document.
 #'
 #' @param qmd_file Path to the `.qmd` source file.
@@ -136,9 +136,7 @@ render_docx <- function(qmd_file, quarto_args = character()) {
   rendered_output(result, wd = wd, default = fs::path_ext_set(qmd_file, "docx"))
 }
 
-# Quarto controls where the DOCX lands (output-dir, output-file, project
-# type), so take the path from its "Output created:" message instead of
-# assuming it sits next to the .qmd.
+# Use Quarto's reported output path when available.
 rendered_output <- function(result, wd, default) {
   lines <- unlist(strsplit(c(result$stdout, result$stderr), "\n"))
   created <- grep("^\\s*Output created: ", lines, value = TRUE)
@@ -168,8 +166,6 @@ docx_publish_args <- function(qmd_file) {
   )
 }
 
-# Walk up from the .qmd towards the filesystem root looking for publish/,
-# so resolution depends only on the manuscript path, never on getwd().
 find_publish_dir <- function(start_dir) {
   dir <- start_dir
   repeat {
@@ -193,6 +189,7 @@ upload_to_gdrive <- function(docx_file, doc_name, existing_id = NULL) {
     cli::cli_abort(c("Rendered DOCX not found:", "x" = "{.file {docx_file}}"))
   }
   if (!is.null(existing_id)) {
+    confirm_unresolved_comments(existing_id)
     googledrive::drive_update(
       googledrive::as_id(existing_id),
       media = docx_file
@@ -208,12 +205,43 @@ upload_to_gdrive <- function(docx_file, doc_name, existing_id = NULL) {
   }
 }
 
+# Replacing a document can detach existing comments from the text.
+confirm_unresolved_comments <- function(doc_id) {
+  n <- tryCatch(
+    count_unresolved_comments(doc_id),
+    error = function(e) {
+      cli::cli_alert_danger(
+        "Could not check for unresolved comments on {.url {gdrive_url(doc_id)}}: {conditionMessage(e)}"
+      )
+      NA_integer_
+    }
+  )
+  if (is.na(n) || n == 0) {
+    return(invisible())
+  }
+  cli::cli_alert_warning(
+    "{n} unresolved comment{?s} on {.url {gdrive_url(doc_id)}} will lose their position in this republish."
+  )
+  if (interactive() && !isTRUE(utils::askYesNo("Replace the doc anyway?"))) {
+    cli::cli_abort("Publish cancelled.", call = NULL)
+  }
+  invisible()
+}
 
-# _publish.yml (Quarto's own publish-record file) is a top-level list of
-# entries like `- source: file.qmd` with a list of records under each
-# provider key (e.g. `posit-connect-cloud`, `gdrive`). `quarto publish` only
-# ever reads/replaces the provider key it's deploying to, so a `gdrive` entry
-# added here survives future `quarto publish` runs untouched.
+count_unresolved_comments <- function(doc_id) {
+  req <- googledrive::request_generate(
+    "drive.comments.list",
+    params = list(
+      fileId = doc_id,
+      fields = "comments(resolved)",
+      pageSize = 100
+    )
+  )
+  resp <- gargle::response_process(googledrive::request_make(req))
+  comments <- resp$comments
+  sum(!vapply(comments, function(x) isTRUE(x$resolved), logical(1)))
+}
+
 load_deployments <- function(deployments_file) {
   if (!fs::file_exists(deployments_file)) {
     return(list())
