@@ -94,8 +94,7 @@ pubthis uses a `_publish.yml` file next to your `.qmd` to remember which
 Google Doc to update. This is the same publish-record file
 `quarto publish` itself uses, so a `gdrive` entry lives alongside any
 `posit-connect-cloud` (or other provider) entry for the same file
-without disturbing it. Commit this file so everyone on the project opens
-the same doc. There are two ways to set this up:
+without disturbing it. There are two ways to set this up:
 
 1.  Let pubthis create a new doc: On first publish, a new Google Doc is
     created and a `gdrive` entry is added to `_publish.yml`
@@ -112,6 +111,14 @@ the same doc. There are two ways to set this up:
 ```
 
 Every subsequent `publish` call will update that doc in place.
+
+### Sharing `_publish.yml`
+
+For most projects, restrict the Google Doc to your collaborators and
+commit `_publish.yml`. This lets everyone working in Git publish to the
+same document and keeps other Quarto records together. If you use
+**Anyone with the link**, commit the file only when everyone who can
+read the repository may also open the document.
 
 ## Related packages
 

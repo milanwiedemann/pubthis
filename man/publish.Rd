@@ -20,6 +20,5 @@ Renders a \code{.qmd} file to DOCX using the bundled reference document and Lua
 filter, then uploads it to Google Drive. On first publish, a \code{gdrive} entry
 for the file is added to \verb{_publish.yml} next to the \code{.qmd}. This is the
 same publish-record file \verb{quarto publish} uses, so a doc already deployed
-to e.g. Posit Connect keeps that record side by side. Commit this file so
-collaborators always open the same shared document.
+to e.g. Posit Connect keeps that record side by side.
 }

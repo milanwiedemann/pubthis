@@ -4,8 +4,7 @@
 #' filter, then uploads it to Google Drive. On first publish, a `gdrive` entry
 #' for the file is added to `_publish.yml` next to the `.qmd`. This is the
 #' same publish-record file `quarto publish` uses, so a doc already deployed
-#' to e.g. Posit Connect keeps that record side by side. Commit this file so
-#' collaborators always open the same shared document.
+#' to e.g. Posit Connect keeps that record side by side.
 #'
 #' @param qmd_file Path to the `.qmd` source file.
 #' @param no_render If `TRUE`, skip the render step and upload the existing
@@ -37,7 +36,7 @@ publish <- function(qmd_file, no_render = FALSE, quarto_args = character()) {
   cli::cli_alert_success("Published: {gdrive_url(doc_id)}")
   if (is.null(existing_id)) {
     cli::cli_alert_info(
-      "Commit {.file {deployments_file}} so collaborators point at the same doc."
+      "If possible, restrict the Google Doc to the intended collaborators, then commit {.file {deployments_file}}."
     )
   }
   invisible(doc_id)
