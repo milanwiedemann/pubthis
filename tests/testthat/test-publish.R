@@ -219,7 +219,7 @@ test_that("rendered_output falls back to the sibling path", {
   )
 })
 
-test_that("figure bookmarks start at the caption", {
+test_that("DOCX filter formats authors and figure bookmarks", {
   skip_on_cran()
   skip_if(Sys.which("quarto") == "", "Quarto is not installed")
   skip_if_not_installed("knitr")
@@ -240,6 +240,24 @@ test_that("figure bookmarks start at the caption", {
   writeLines(
     c(
       "---",
+      'title: "Test paper"',
+      "author:",
+      "  - name: Name1 Surname1",
+      "    affiliation:",
+      "      - ref: uni1",
+      "      - ref: uni2",
+      "  - name: Name2 Surname2",
+      "    affiliation:",
+      "      - ref: uni2",
+      "affiliations:",
+      "  - id: uni1",
+      "    name: Department1, University1",
+      "    city: City1",
+      "    country: Country1",
+      "  - id: uni2",
+      "    name: Department2, University2",
+      "    city: City2",
+      "    country: Country2",
       "format: docx",
       "---",
       "",
@@ -274,6 +292,24 @@ test_that("figure bookmarks start at the caption", {
   expect_gt(bookmark, image)
   expect_gt(caption, bookmark)
   expect_gt(bookmark_end, caption - bookmark)
+  expect_match(xml, "Name1 Surname1", fixed = TRUE)
+  expect_match(xml, "Name2 Surname2", fixed = TRUE)
+  expect_match(
+    xml,
+    "Department1, University1, City1, Country1",
+    fixed = TRUE
+  )
+  expect_match(
+    xml,
+    "Department2, University2, City2, Country2",
+    fixed = TRUE
+  )
+  expect_match(
+    xml,
+    '<w:t xml:space="preserve">1,2</w:t>',
+    fixed = TRUE
+  )
+  expect_match(xml, 'w:rStyle w:val="Affiliation"', fixed = TRUE)
 })
 
 test_that("upload_to_gdrive errors clearly when the DOCX is missing", {
